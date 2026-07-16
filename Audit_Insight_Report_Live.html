@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audit Insight Report — Live</title>
+<style>
+  :root{
+    --ink:#1c2333; --muted:#6b7386; --border:#e5e8f0;
+    --s1-a:#2b6cb0; --s1-b:#3fa9e0;
+    --s2-a:#7c3aed; --s2-b:#c026d3;
+    --s3-a:#dc2626; --s3-b:#f97316;
+    --good:#1f9d55; --warn:#e08b12; --bad:#d64545;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background:#eef1f8; color:var(--ink); line-height:1.5;
+  }
+  header{
+    background:linear-gradient(120deg,#1c2b6b,#3457d5 45%,#8a4fff);
+    color:#fff; padding:32px 40px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;
+  }
+  header h1{margin:0 0 6px; font-size:29px;}
+  header p{margin:0; opacity:0.92; font-size:14px;}
+  .live-pill{
+    display:flex; align-items:center; gap:8px; background:rgba(255,255,255,0.15);
+    padding:8px 14px; border-radius:999px; font-size:13px; white-space:nowrap;
+  }
+  .live-dot{ width:8px; height:8px; border-radius:50%; background:#4FD187; animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+  .container{max-width:1200px; margin:0 auto; padding:30px 20px 70px;}
+
+  #loadingArea{padding:60px; text-align:center; color:var(--muted); font-size:14px;}
+  #errorArea .error-box{background:#fbe8e8; color:var(--bad); padding:16px 20px; border-radius:10px; font-size:13.5px; margin-bottom:20px;}
+
+  section{margin-bottom:50px; border-radius:16px; overflow:hidden; box-shadow:0 2px 10px rgba(20,30,60,0.06);}
+  .sec-head{padding:22px 28px; color:#fff; display:flex; align-items:center; gap:14px;}
+  .sec-head .num{
+    background:rgba(255,255,255,0.25); font-weight:800; font-size:16px;
+    width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    border:2px solid rgba(255,255,255,0.5);
+  }
+  .sec-head h2{margin:0; font-size:21px;}
+  .sec-head p{margin:4px 0 0; font-size:13px; opacity:0.9;}
+
+  .sec1 .sec-head{background:linear-gradient(100deg,var(--s1-a),var(--s1-b));}
+  .sec2 .sec-head{background:linear-gradient(100deg,var(--s2-a),var(--s2-b));}
+  .sec3 .sec-head{background:linear-gradient(100deg,var(--s3-a),var(--s3-b));}
+
+  .sec-body{background:#fff; padding:26px 28px;}
+
+  .card{
+    background:#fbfcff; border:1px solid var(--border); border-radius:12px;
+    padding:22px; margin-bottom:20px;
+  }
+  .sec1 .card{border-left:5px solid var(--s1-a);}
+  .sec2 .card{border-left:5px solid var(--s2-a);}
+  .sec3 .card{border-left:5px solid var(--s3-a);}
+  .card:last-child{margin-bottom:0;}
+  .card h3{margin-top:0; font-size:16px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th,td{padding:10px 12px; text-align:left; border-bottom:1px solid var(--border);}
+  th{color:#fff; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em;}
+  .sec1 th{background:var(--s1-a);}
+  .sec2 th{background:var(--s2-a);}
+  .sec3 th{background:var(--s3-a);}
+  tr:nth-child(even) td{background:#f7f8fd;}
+  tr:hover td{background:#eef2ff;}
+  .agent-name{font-weight:600;}
+
+  .pill{display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;}
+  .pill.good{background:#e6f7ec; color:var(--good);}
+  .pill.warn{background:#fff2df; color:var(--warn);}
+  .pill.bad{background:#fbe8e8; color:var(--bad);}
+  .pill.info{background:#e6f0fb; color:#2b6cb0;}
+
+  .bar-row{display:flex; align-items:center; gap:10px; margin:8px 0;}
+  .bar-label{width:250px; font-size:13.5px; font-weight:700; color:var(--s1-a); flex-shrink:0;}
+  .bar-track{flex:1; background:#eef1f9; border-radius:6px; height:16px; overflow:hidden;}
+  .bar-fill{height:100%;}
+  .sec1 .bar-fill{background:linear-gradient(90deg,var(--s1-a),var(--s1-b));}
+  .bar-count{width:34px; text-align:right; font-size:12.5px; color:var(--muted); font-weight:700;}
+
+  .focus-tag{display:inline-block; color:#fff; padding:4px 12px; border-radius:8px; font-size:12.5px; margin:2px 4px 2px 0; font-weight:600;}
+  .sec3 .focus-tag{background:linear-gradient(100deg,var(--s3-a),var(--s3-b));}
+
+  .risk-block{border-radius:10px; overflow:hidden; margin-bottom:16px; border:1px solid var(--border);}
+  .risk-header{padding:10px 18px; color:#fff; font-weight:700; font-size:14px; display:flex; justify-content:space-between;}
+  .risk-header span.count{font-weight:500; font-size:12.5px; opacity:0.9;}
+  .risk-header.high{background:#dc2626;}
+  .risk-header.monitor{background:#e08b12;}
+  .risk-header.low{background:#2b6cb0;}
+  .risk-row{display:flex; justify-content:space-between; align-items:center; padding:12px 18px; border-bottom:1px solid var(--border);}
+  .risk-row:last-child{border-bottom:none;}
+  .risk-row.high{background:#fdecec;}
+  .risk-row.monitor{background:#fdf3e2;}
+  .risk-row.low{background:#e9f1fb;}
+  .risk-name{font-weight:700; font-size:14px;}
+  .risk-detail{font-size:12px; color:var(--muted); margin-top:2px;}
+  .risk-error{font-weight:700; font-size:13.5px; text-align:right;}
+  .risk-error small{display:block; font-weight:400; color:var(--muted); font-size:11px;}
+  .risk-error.high{color:#dc2626;}
+  .risk-error.monitor{color:#e08b12;}
+  .risk-error.low{color:#2b6cb0;}
+
+  .rank-card{
+    background:#fffaf8; border:1px solid #f6d9cf; border-radius:12px; padding:22px;
+    margin-bottom:16px; display:flex; gap:20px; align-items:flex-start;
+  }
+  .rank-badge{
+    width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg,var(--s3-a),var(--s3-b));
+    color:#fff; font-weight:800; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .rank-info h3{margin:0 0 4px; font-size:17px;}
+  .rank-metrics{display:flex; gap:22px; margin:10px 0; flex-wrap:wrap;}
+  .metric{font-size:13px;}
+  .metric b{display:block; font-size:19px; color:var(--ink);}
+  .note{color:var(--muted); font-size:12.5px; margin-top:14px;}
+  .badge-week{display:inline-block; background:rgba(255,255,255,0.22); color:#fff; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:700; margin-left:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Audit Insight Report</h1>
+    <p>BAU Ticket Audits &amp; Disposition Accuracy — Consolidated Findings (live)</p>
+  </div>
+  <div class="live-pill"><span class="live-dot" id="liveDot"></span><span id="statusText">Loading…</span> &nbsp;|&nbsp; Updated: <span id="lastUpdated">–</span></div>
+</header>
+
+<div class="container">
+  <div id="errorArea"></div>
+  <div id="loadingArea">Fetching live data from your sheets…</div>
+  <div id="reportRoot" style="display:none;"></div>
+</div>
+
+<script>
+const SHEET_ID = "1gjoEKOMVbiO7_GFFG3Qdi1kB1CmmZkVBTHc4lqRFjvs";
+const GID_AUDIT_SUBMISSION = "401526150";
+const GID_UNQUALIFIED = "666222539";
+const REFRESH_MS = 60000;
+
+function csvUrl(gid){ return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}&t=${Date.now()}`; }
+
+function parseCSV(text){
+  const rows = []; let row=[], field='', inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i], next=text[i+1];
+    if(inQuotes){
+      if(c==='"'&&next==='"'){field+='"';i++;}
+      else if(c==='"'){inQuotes=false;}
+      else field+=c;
+    } else {
+      if(c==='"') inQuotes=true;
+      else if(c===','){row.push(field);field='';}
+      else if(c==='\n'){row.push(field);rows.push(row);row=[];field='';}
+      else if(c==='\r'){}
+      else field+=c;
+    }
+  }
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  return rows.filter(r=>r.some(c=>c!==''));
+}
+
+async function fetchSheet(gid){
+  const res = await fetch(csvUrl(gid));
+  if(!res.ok) throw new Error(`Sheet fetch failed (${res.status}). Make sure both tabs are published to web.`);
+  return parseCSV(await res.text());
+}
+
+function norm(s){ return (s||'').toString().trim(); }
+function isMet(v){ return norm(v).toLowerCase()==='met'; }
+function isNotMet(v){ return norm(v).toLowerCase()==='not met'; }
+function isYes(v){ return norm(v).toLowerCase()==='yes'; }
+function isNo(v){ return norm(v).toLowerCase()==='no'; }
+function firstName(s){ return norm(s).split(/\s+/)[0].toLowerCase(); }
+function fmt1(n){ return (isFinite(n)?n:0).toFixed(1); }
+
+const META_COLS = ['agent','qa','process','disposition type','email id','audit date','ticket id','rag','call summary','final score'];
+
+function parseAuditSubmission(rows){
+  const headers = rows[0].map(norm);
+  const idx = name => headers.findIndex(h=>h.toLowerCase()===name);
+  const agentIdx = idx('agent');
+  const finalScoreIdx = idx('final score');
+  const paramCols = [];
+  let lastParamName = null;
+  headers.forEach((h,i)=>{
+    const hl = h.toLowerCase();
+    if(hl==='status'){ if(lastParamName) paramCols.push({name:lastParamName, statusIdx:i}); }
+    else if(hl==='remarks'){}
+    else if(!META_COLS.includes(hl) && h!==''){ lastParamName = h; }
+  });
+  const records = [];
+  for(let r=1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row || !norm(row[agentIdx])) continue;
+    const agent = norm(row[agentIdx]);
+    const scoreRaw = finalScoreIdx>=0 ? norm(row[finalScoreIdx]) : '';
+    const score = scoreRaw!=='' && !isNaN(parseFloat(scoreRaw)) ? parseFloat(scoreRaw) : null;
+    const params = {};
+    paramCols.forEach(pc => { params[pc.name] = norm(row[pc.statusIdx]); });
+    records.push({agent, score, params});
+  }
+  return {records, paramNames: paramCols.map(p=>p.name)};
+}
+
+function parseUnqualified(rows){
+  const headers = rows[0].map(norm);
+  const idx = name => headers.findIndex(h=>h.toLowerCase()===name);
+  const agentIdx = idx('agent');
+  const disposedIdx = idx('disposed correctly');
+  let unqualIdx = idx('unqualified lead?'); if(unqualIdx<0) unqualIdx = idx('unqualified lead');
+  const notesIdx = idx('detailed notes');
+  const probingIdx = headers.findIndex(h=>h.toLowerCase().includes('probing'));
+  const records = [];
+  for(let r=1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row || !norm(row[agentIdx])) continue;
+    records.push({
+      agent: norm(row[agentIdx]),
+      disposed: disposedIdx>=0?norm(row[disposedIdx]):'',
+      unqual: unqualIdx>=0?norm(row[unqualIdx]):'',
+      notes: notesIdx>=0?norm(row[notesIdx]):'',
+      probing: probingIdx>=0?norm(row[probingIdx]):'',
+    });
+  }
+  return records;
+}
+
+function ratingPill(score){
+  if(score<=65) return {cls:'bad', label:'Needs Improvement'};
+  if(score<80) return {cls:'warn', label:'Below Average'};
+  if(score<90) return {cls:'good', label:'Good'};
+  return {cls:'good', label:'Excellent'};
+}
+function pctPill(pct, goodIsHigh){
+  // goodIsHigh: true if higher % is better (e.g. accuracy), false if higher % is worse (e.g. error)
+  const good = goodIsHigh ? pct>=80 : pct<=25;
+  const warn = goodIsHigh ? (pct>=50&&pct<80) : (pct>25&&pct<=50);
+  const cls = good ? 'good' : warn ? 'warn' : 'bad';
+  return `<span class="pill ${cls}">${pct.toFixed(1)}%</span>`;
+}
+
+function buildSection1(auditRecords, paramNames){
+  // Agent-wise audit count & avg score
+  const byAgent = {};
+  auditRecords.forEach(r=>{
+    if(!byAgent[r.agent]) byAgent[r.agent] = {agent:r.agent, scores:[], paramNotMet:{}, paramTotal:{}};
+    const b = byAgent[r.agent];
+    if(r.score!==null) b.scores.push(r.score);
+    Object.entries(r.params).forEach(([p,v])=>{
+      if(!v) return;
+      b.paramTotal[p] = (b.paramTotal[p]||0)+1;
+      if(isNotMet(v)) b.paramNotMet[p] = (b.paramNotMet[p]||0)+1;
+    });
+  });
+  let agentRows = Object.values(byAgent).map(b=>({
+    agent:b.agent, count:b.scores.length,
+    avg: b.scores.length? b.scores.reduce((a,c)=>a+c,0)/b.scores.length : 0,
+    paramNotMet:b.paramNotMet
+  })).filter(r=>r.count>0);
+  agentRows.sort((a,b)=>a.avg-b.avg);
+  const totalAudits = agentRows.reduce((a,r)=>a+r.count,0);
+
+  const rowsHtml = agentRows.map(r=>{
+    const rt = ratingPill(r.avg);
+    return `<tr><td class="agent-name">${r.agent}</td><td>${r.count}</td><td>${fmt1(r.avg)}</td><td><span class="pill ${rt.cls}">${rt.label}</span></td></tr>`;
+  }).join('');
+
+  // Org-wide parameter Not-Met totals
+  const paramTotals = {};
+  paramNames.forEach(p=>paramTotals[p]=0);
+  auditRecords.forEach(r=>{
+    Object.entries(r.params).forEach(([p,v])=>{ if(isNotMet(v)) paramTotals[p]=(paramTotals[p]||0)+1; });
+  });
+  const topParams = Object.entries(paramTotals).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const maxCount = topParams.length? topParams[0][1] : 1;
+  const barsHtml = topParams.map(([name,count])=>`
+    <div class="bar-row">
+      <div class="bar-label">${name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${maxCount? (count/maxCount*100):0}%"></div></div>
+      <div class="bar-count">${count}</div>
+    </div>`).join('') || '<p class="note">No "Not Met" markdowns found yet.</p>';
+
+  // Agent-wise top1 focus area
+  const focusRows = agentRows.slice().sort((a,b)=>a.agent.localeCompare(b.agent)).map(r=>{
+    const entries = Object.entries(r.paramNotMet).sort((a,b)=>b[1]-a[1]);
+    if(!entries.length) return `<tr><td class="agent-name">${r.agent}</td><td colspan="2" style="color:var(--muted)">No markdowns</td></tr>`;
+    const [topName, topCount] = entries[0];
+    return `<tr><td class="agent-name">${r.agent}</td><td>${topName}</td><td>${topCount}</td></tr>`;
+  }).join('');
+
+  return {
+    html: `
+    <section class="sec1">
+      <div class="sec-head">
+        <div class="num">1</div>
+        <div><h2>BAU (Ticket Audit) Insights</h2>
+        <p>Agent-wise performance on ticket quality audits, based on ${paramNames.length} evaluation parameters per audit.</p></div>
+      </div>
+      <div class="sec-body">
+        <div class="card">
+          <h3>Agent-wise Audit Count &amp; Average Score</h3>
+          <table><tr><th>Agent</th><th>Audits Done</th><th>Avg Score</th><th>Rating</th></tr>${rowsHtml}</table>
+          <p class="note">Sorted lowest → highest average score. Total agents audited: ${agentRows.length} | Total audits: ${totalAudits}.</p>
+        </div>
+        <div class="card">
+          <h3>Top 3 Highest Markdown Parameters (org-wide)</h3>
+          <p class="note" style="margin-top:0;">Parameters most frequently marked "Not Met" across all audits — the biggest overall coaching gaps.</p>
+          ${barsHtml}
+        </div>
+        <div class="card">
+          <h3>Agent-wise Top 1 Focus Area</h3>
+          <p class="note" style="margin-top:0;">The single parameter each agent was marked down on most often.</p>
+          <table><tr><th>Agent</th><th>Top Focus Area (Most "Not Met")</th><th>Times Marked Down</th></tr>${focusRows}</table>
+        </div>
+      </div>
+    </section>`,
+    agentRows, topParams
+  };
+}
+
+function buildSection2(unqualRecords){
+  const byAgent = {};
+  unqualRecords.forEach(r=>{
+    if(!byAgent[r.agent]) byAgent[r.agent] = {agent:r.agent, total:0, dispNo:0, unqualYes:0, unqualWrong:0, notesYes:0, notesTotal:0, probingYes:0, probingTotal:0};
+    const b = byAgent[r.agent];
+    b.total++;
+    if(isNo(r.disposed)) b.dispNo++;
+    if(isYes(r.unqual)){
+      b.unqualYes++;
+      if(isNo(r.disposed)) b.unqualWrong++;
+    }
+    if(r.notes!=='' && r.notes!=='-'){ b.notesTotal++; if(isYes(r.notes)) b.notesYes++; }
+    if(r.probing!==''){ b.probingTotal++; if(isYes(r.probing)) b.probingYes++; }
+  });
+
+  let rows = Object.values(byAgent).map(b=>{
+    const dispErr = b.total? b.dispNo/b.total*100 : 0;
+    const unqErr = b.unqualYes? b.unqualWrong/b.unqualYes*100 : 0;
+    const notesAcc = b.notesTotal? b.notesYes/b.notesTotal*100 : 0;
+    const probingAcc = b.probingTotal? b.probingYes/b.probingTotal*100 : 0;
+    const combinedError = (dispErr + unqErr + (100-notesAcc) + (100-probingAcc)) / 4;
+    return {agent:b.agent, tickets:b.total, dispErr, unqErr, notesAcc, probingAcc, combinedError};
+  });
+  rows.sort((a,b)=>b.combinedError-a.combinedError);
+
+  const tableRows = rows.map(r=>`
+    <tr>
+      <td class="agent-name">${r.agent}</td><td>${r.tickets}</td>
+      <td>${pctPill(r.dispErr,false)}</td><td>${pctPill(r.unqErr,false)}</td>
+      <td>${pctPill(r.notesAcc,true)}</td><td>${pctPill(r.probingAcc,true)}</td>
+      <td><b>${fmt1(r.combinedError)}%</b></td>
+    </tr>`).join('');
+
+  const high = rows.filter(r=>r.combinedError>=40);
+  const monitor = rows.filter(r=>r.combinedError>=25 && r.combinedError<40);
+  const low = rows.filter(r=>r.combinedError<25);
+
+  function riskRow(r, cls){
+    return `<div class="risk-row ${cls}">
+      <div><div class="risk-name">${r.agent}</div>
+      <div class="risk-detail">Disp ${fmt1(r.dispErr)}% · Unq ${fmt1(r.unqErr)}% · Notes ${fmt1(r.notesAcc)}% · Probing ${fmt1(r.probingAcc)}%</div></div>
+      <div class="risk-error ${cls}">Combined error: ${fmt1(r.combinedError)}%<small>${r.tickets} tickets audited</small></div>
+    </div>`;
+  }
+  function riskBlock(label, cls, list){
+    if(!list.length) return '';
+    return `<div class="risk-block">
+      <div class="risk-header ${cls}"><span>${label}</span><span class="count">${list.length} agent${list.length===1?'':'s'}</span></div>
+      ${list.map(r=>riskRow(r,cls)).join('')}
+    </div>`;
+  }
+
+  const totalTickets = rows.reduce((a,r)=>a+r.tickets,0);
+  const cleanCount = rows.filter(r=>r.combinedError===0).length;
+  const cleanNote = cleanCount>0
+    ? `${cleanCount} agent${cleanCount===1?'':'s'} qualified as "Clean" (0% combined error) this cycle.`
+    : `No agent qualified as "Clean" (0% combined error) in this cycle — every agent had at least one gap area across disposition, unqualified-lead handling, notes, or probing.`;
+
+  return {
+    html: `
+    <section class="sec2">
+      <div class="sec-head">
+        <div class="num">2</div>
+        <div><h2>Disposition Audit Insights <span class="badge-week">Live</span></h2>
+        <p>Agent-wise accuracy in disposing tickets correctly — covering disposition accuracy, unqualified-lead handling, documentation (notes) quality, and probing quality.</p></div>
+      </div>
+      <div class="sec-body">
+        <div class="card">
+          <h3>Agent-wise Disposition, Documentation &amp; Probing Accuracy</h3>
+          <table><tr><th>Agent</th><th>Tickets</th><th>Disp Error</th><th>Unq Error</th><th>Notes Accuracy</th><th>Probing Accuracy</th><th>Combined Error</th></tr>${tableRows}</table>
+          <p class="note">
+            <b>Disp Error</b> = % of tickets disposed incorrectly overall &nbsp;|&nbsp;
+            <b>Unq Error</b> = of the leads that were genuinely unqualified, % that got wrongly disposed &nbsp;|&nbsp;
+            <b>Notes Accuracy</b> = % of tickets with correct/complete detailed notes &nbsp;|&nbsp;
+            <b>Probing Accuracy</b> = % of tickets with effective/relevant probing done &nbsp;|&nbsp;
+            <b>Combined Error</b> = simple average of Disp, Unq, Notes, and Probing error rates. Data covers all rows currently in the sheet (${totalTickets} tickets audited total).
+          </p>
+        </div>
+        <div class="card">
+          <h3>Risk Segmentation &amp; Integrity Flags</h3>
+          <p class="note" style="margin-top:0;">Agents grouped by combined error rate across disposition accuracy, unqualified-lead handling, notes, and probing.</p>
+          ${riskBlock('High Risk','high',high)}
+          ${riskBlock('Monitor','monitor',monitor)}
+          ${riskBlock('Low Risk','low',low)}
+          <p class="note">${cleanNote}</p>
+        </div>
+      </div>
+    </section>`,
+    rows
+  };
+}
+
+function buildSection3(s1AgentRows, s2Rows, topParams){
+  // match agents by first name
+  const s2ByFirst = {};
+  s2Rows.forEach(r=>{ s2ByFirst[firstName(r.agent)] = r; });
+
+  const combined = s1AgentRows.map(a=>{
+    const match = s2ByFirst[firstName(a.agent)];
+    if(!match) return null;
+    const dispAccuracy = 100 - match.dispErr;
+    const combinedScore = (a.avg + dispAccuracy) / 2;
+    const focusEntries = Object.entries(a.paramNotMet).sort((x,y)=>y[1]-x[1]).slice(0,2);
+    return {
+      shortName: a.agent, fullName: match.agent,
+      bau: a.avg, dispAccuracy, combinedScore, focusEntries
+    };
+  }).filter(Boolean);
+
+  combined.sort((a,b)=>a.combinedScore-b.combinedScore);
+  const bottom3 = combined.slice(0,3);
+
+  function scoreColor(v){ return v<65?'var(--bad)': v<80?'var(--warn)':'var(--good)'; }
+
+  const cardsHtml = bottom3.map((a,i)=>`
+    <div class="rank-card">
+      <div class="rank-badge">#${i+1}</div>
+      <div class="rank-info">
+        <h3>${a.shortName} <span style="font-weight:400;color:var(--muted);font-size:13px;">(${a.fullName})</span></h3>
+        <div class="rank-metrics">
+          <div class="metric">BAU Avg Score<b style="color:${scoreColor(a.bau)}">${fmt1(a.bau)}</b></div>
+          <div class="metric">Disposition Accuracy<b style="color:${scoreColor(a.dispAccuracy)}">${fmt1(a.dispAccuracy)}%</b></div>
+          <div class="metric">Combined Score<b style="color:${scoreColor(a.combinedScore)}">${fmt1(a.combinedScore)}</b></div>
+        </div>
+        <div>${a.focusEntries.map(([name,count])=>`<span class="focus-tag">${name} (${count}x)</span>`).join('') || '<span class="focus-tag">No markdowns</span>'}</div>
+      </div>
+    </div>`).join('');
+
+  // Key takeaway: find most common focus area across bottom3
+  const focusCount = {};
+  bottom3.forEach(a=>a.focusEntries.forEach(([name])=>{ focusCount[name]=(focusCount[name]||0)+1; }));
+  const topShared = Object.entries(focusCount).sort((a,b)=>b[1]-a[1])[0];
+  const namesJoined = bottom3.map(a=>a.shortName).join(', ');
+  const takeaway = bottom3.length
+    ? `The bottom-ranked agents (${namesJoined}) were identified from combined BAU score and disposition accuracy (equal weight).${topShared ? ` <b>${topShared[0]}</b> is a recurring gap among them, consistent with the org-wide top markdown parameters.` : ''} This overlap suggests a targeted coaching sprint on these focus areas would move the needle fastest.`
+    : `Not enough matched agent data between the two sheets to compute an overall ranking yet.`;
+
+  return `
+  <section class="sec3">
+    <div class="sec-head">
+      <div class="num">3</div>
+      <div><h2>Overall Report — Bottom 3 Agents</h2>
+      <p>Combined ranking using average BAU score + disposition accuracy (equal weight), with their top 2 coaching focus areas.</p></div>
+    </div>
+    <div class="sec-body">
+      ${cardsHtml}
+      <div class="card"><h3>Key Takeaway</h3><p style="margin:0;font-size:14px;">${takeaway}</p></div>
+    </div>
+  </section>`;
+}
+
+async function loadData(isFirstLoad){
+  try{
+    const [submissionRows, unqualRows] = await Promise.all([
+      fetchSheet(GID_AUDIT_SUBMISSION), fetchSheet(GID_UNQUALIFIED)
+    ]);
+    const {records: auditRecords, paramNames} = parseAuditSubmission(submissionRows);
+    const unqualRecords = parseUnqualified(unqualRows);
+
+    const sec1 = buildSection1(auditRecords, paramNames);
+    const sec2 = buildSection2(unqualRecords);
+    const sec3 = buildSection3(sec1.agentRows, sec2.rows, sec1.topParams);
+
+    document.getElementById('reportRoot').innerHTML = sec1.html + sec2.html + sec3;
+    document.getElementById('errorArea').innerHTML = '';
+    document.getElementById('statusText').textContent = 'Live';
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+
+    if(isFirstLoad){
+      document.getElementById('loadingArea').style.display = 'none';
+      document.getElementById('reportRoot').style.display = 'block';
+    }
+  } catch(err){
+    console.error(err);
+    document.getElementById('statusText').textContent = 'Error';
+    document.getElementById('errorArea').innerHTML = `<div class="error-box">
+      Couldn't load live data: ${err.message}<br>
+      Make sure both tabs (Audit Submission &amp; Unqualified Audits) are published to web and stay public.
+    </div>`;
+    if(isFirstLoad) document.getElementById('loadingArea').style.display = 'none';
+  }
+}
+
+loadData(true);
+setInterval(()=>loadData(false), REFRESH_MS);
+</script>
+</body>
+</html>
