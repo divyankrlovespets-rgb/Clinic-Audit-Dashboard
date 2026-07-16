@@ -34,6 +34,23 @@
   #loadingArea{padding:60px; text-align:center; color:var(--muted); font-size:14px;}
   #errorArea .error-box{background:#fbe8e8; color:var(--bad); padding:16px 20px; border-radius:10px; font-size:13.5px; margin-bottom:20px;}
 
+  .filter-bar{
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    padding:16px 20px; margin-bottom:24px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .filter-bar .flabel{ font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; margin-right:2px;}
+  .filter-bar select, .filter-bar input[type=date]{
+    padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px;
+    background:#fbfcff; color:var(--ink); font-family:inherit;
+  }
+  .filter-bar .grp{display:flex; align-items:center; gap:8px;}
+  .filter-bar button{
+    padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:#f3f4f8;
+    color:var(--ink); font-size:13px; cursor:pointer; font-weight:600;
+  }
+  .filter-bar button:hover{ background:#e9ecf5; }
+  .filter-bar .count-note{ margin-left:auto; font-size:12.5px; color:var(--muted); }
+
   section{margin-bottom:50px; border-radius:16px; overflow:hidden; box-shadow:0 2px 10px rgba(20,30,60,0.06);}
   .sec-head{padding:22px 28px; color:#fff; display:flex; align-items:center; gap:14px;}
   .sec-head .num{
@@ -134,6 +151,21 @@
 <div class="container">
   <div id="errorArea"></div>
   <div id="loadingArea">Fetching live data from your sheets…</div>
+  <div id="filterBar" class="filter-bar" style="display:none;">
+    <div class="grp"><span class="flabel">Month</span>
+      <select id="monthFilter"><option value="">All</option></select>
+    </div>
+    <div class="grp"><span class="flabel">From</span>
+      <input type="date" id="fromFilter">
+    </div>
+    <div class="grp"><span class="flabel">To</span>
+      <input type="date" id="toFilter">
+    </div>
+    <button id="thisMonthBtn">This Month</button>
+    <button id="thisWeekBtn">This Week</button>
+    <button id="clearFilterBtn">Clear</button>
+    <span class="count-note" id="filterCountNote"></span>
+  </div>
   <div id="reportRoot" style="display:none;"></div>
 </div>
 
@@ -179,6 +211,32 @@ function isNo(v){ return norm(v).toLowerCase()==='no'; }
 function firstName(s){ return norm(s).split(/\s+/)[0].toLowerCase(); }
 function fmt1(n){ return (isFinite(n)?n:0).toFixed(1); }
 
+// Parses dates like "5/1/2026", "05/01/2026", "2026-01-05" -> Date object (or null)
+function parseFlexibleDate(s){
+  s = norm(s);
+  if(!s) return null;
+  let m = s.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
+  if(!m) return null;
+  let a=parseInt(m[1],10), b=parseInt(m[2],10), c=parseInt(m[3],10);
+  let day,month,year;
+  if(m[1].length===4){ year=a; month=b; day=c; } // YYYY-MM-DD
+  else { day=a; month=b; year=c; if(year<100) year+=2000; } // DD/MM/YYYY
+  const d = new Date(year, month-1, day);
+  return isNaN(d.getTime()) ? null : d;
+}
+function dateInRange(d, from, to){
+  if(!d) return true; // records without a parseable date pass through (don't hide unknowns)
+  if(from && d < from) return false;
+  if(to && d > to) return false;
+  return true;
+}
+function monthKey(d){ return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : null; }
+function monthLabel(key){
+  const [y,m] = key.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${names[parseInt(m,10)-1]} ${y}`;
+}
+
 const META_COLS = ['agent','qa','process','disposition type','email id','audit date','ticket id','rag','call summary','final score'];
 
 function parseAuditSubmission(rows){
@@ -186,6 +244,7 @@ function parseAuditSubmission(rows){
   const idx = name => headers.findIndex(h=>h.toLowerCase()===name);
   const agentIdx = idx('agent');
   const finalScoreIdx = idx('final score');
+  const dateIdx = idx('audit date');
   const paramCols = [];
   let lastParamName = null;
   headers.forEach((h,i)=>{
@@ -203,7 +262,8 @@ function parseAuditSubmission(rows){
     const score = scoreRaw!=='' && !isNaN(parseFloat(scoreRaw)) ? parseFloat(scoreRaw) : null;
     const params = {};
     paramCols.forEach(pc => { params[pc.name] = norm(row[pc.statusIdx]); });
-    records.push({agent, score, params});
+    const date = dateIdx>=0 ? parseFlexibleDate(row[dateIdx]) : null;
+    records.push({agent, score, params, date});
   }
   return {records, paramNames: paramCols.map(p=>p.name)};
 }
@@ -216,6 +276,7 @@ function parseUnqualified(rows){
   let unqualIdx = idx('unqualified lead?'); if(unqualIdx<0) unqualIdx = idx('unqualified lead');
   const notesIdx = idx('detailed notes');
   const probingIdx = headers.findIndex(h=>h.toLowerCase().includes('probing'));
+  const dateIdx = idx('date');
   const records = [];
   for(let r=1;r<rows.length;r++){
     const row = rows[r];
@@ -226,6 +287,7 @@ function parseUnqualified(rows){
       unqual: unqualIdx>=0?norm(row[unqualIdx]):'',
       notes: notesIdx>=0?norm(row[notesIdx]):'',
       probing: probingIdx>=0?norm(row[probingIdx]):'',
+      date: dateIdx>=0 ? parseFlexibleDate(row[dateIdx]) : null,
     });
   }
   return records;
@@ -475,6 +537,50 @@ function buildSection3(s1AgentRows, s2Rows, topParams){
   </section>`;
 }
 
+let RAW = { auditRecords: [], paramNames: [], unqualRecords: [] };
+
+function getFilterRange(){
+  const monthKeyVal = document.getElementById('monthFilter').value;
+  const fromVal = document.getElementById('fromFilter').value;
+  const toVal = document.getElementById('toFilter').value;
+  let from = fromVal ? new Date(fromVal+'T00:00:00') : null;
+  let to = toVal ? new Date(toVal+'T23:59:59') : null;
+  if(monthKeyVal){
+    const [y,m] = monthKeyVal.split('-').map(Number);
+    from = new Date(y, m-1, 1);
+    to = new Date(y, m, 0, 23, 59, 59);
+  }
+  return {from, to};
+}
+
+function populateMonthOptions(){
+  const keys = new Set();
+  RAW.auditRecords.forEach(r=>{ const k=monthKey(r.date); if(k) keys.add(k); });
+  RAW.unqualRecords.forEach(r=>{ const k=monthKey(r.date); if(k) keys.add(k); });
+  const sorted = [...keys].sort();
+  const sel = document.getElementById('monthFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All</option>' + sorted.map(k=>`<option value="${k}">${monthLabel(k)}</option>`).join('');
+  if(sorted.includes(cur)) sel.value = cur;
+}
+
+function renderReport(){
+  const {from, to} = getFilterRange();
+  const auditFiltered = RAW.auditRecords.filter(r => dateInRange(r.date, from, to));
+  const unqualFiltered = RAW.unqualRecords.filter(r => dateInRange(r.date, from, to));
+
+  const sec1 = buildSection1(auditFiltered, RAW.paramNames);
+  const sec2 = buildSection2(unqualFiltered);
+  const sec3 = buildSection3(sec1.agentRows, sec2.rows, sec1.topParams);
+
+  document.getElementById('reportRoot').innerHTML = sec1.html + sec2.html + sec3;
+
+  const totalAll = RAW.auditRecords.length + RAW.unqualRecords.length;
+  const totalFiltered = auditFiltered.length + unqualFiltered.length;
+  document.getElementById('filterCountNote').textContent =
+    (from||to) ? `Showing ${totalFiltered} of ${totalAll} rows` : `Showing all ${totalAll} rows`;
+}
+
 async function loadData(isFirstLoad){
   try{
     const [submissionRows, unqualRows] = await Promise.all([
@@ -482,12 +588,11 @@ async function loadData(isFirstLoad){
     ]);
     const {records: auditRecords, paramNames} = parseAuditSubmission(submissionRows);
     const unqualRecords = parseUnqualified(unqualRows);
+    RAW = { auditRecords, paramNames, unqualRecords };
 
-    const sec1 = buildSection1(auditRecords, paramNames);
-    const sec2 = buildSection2(unqualRecords);
-    const sec3 = buildSection3(sec1.agentRows, sec2.rows, sec1.topParams);
+    populateMonthOptions();
+    renderReport();
 
-    document.getElementById('reportRoot').innerHTML = sec1.html + sec2.html + sec3;
     document.getElementById('errorArea').innerHTML = '';
     document.getElementById('statusText').textContent = 'Live';
     document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
@@ -495,6 +600,7 @@ async function loadData(isFirstLoad){
     if(isFirstLoad){
       document.getElementById('loadingArea').style.display = 'none';
       document.getElementById('reportRoot').style.display = 'block';
+      document.getElementById('filterBar').style.display = 'flex';
     }
   } catch(err){
     console.error(err);
@@ -506,6 +612,45 @@ async function loadData(isFirstLoad){
     if(isFirstLoad) document.getElementById('loadingArea').style.display = 'none';
   }
 }
+
+document.getElementById('monthFilter').addEventListener('change', () => {
+  document.getElementById('fromFilter').value = '';
+  document.getElementById('toFilter').value = '';
+  renderReport();
+});
+document.getElementById('fromFilter').addEventListener('change', () => {
+  document.getElementById('monthFilter').value = '';
+  renderReport();
+});
+document.getElementById('toFilter').addEventListener('change', () => {
+  document.getElementById('monthFilter').value = '';
+  renderReport();
+});
+document.getElementById('thisMonthBtn').addEventListener('click', () => {
+  const now = new Date();
+  document.getElementById('monthFilter').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('fromFilter').value = '';
+  document.getElementById('toFilter').value = '';
+  renderReport();
+});
+document.getElementById('thisWeekBtn').addEventListener('click', () => {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun
+  const diffToMonday = (day===0? -6 : 1) - day;
+  const monday = new Date(now); monday.setDate(now.getDate()+diffToMonday);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const iso = d => d.toISOString().slice(0,10);
+  document.getElementById('monthFilter').value = '';
+  document.getElementById('fromFilter').value = iso(monday);
+  document.getElementById('toFilter').value = iso(sunday);
+  renderReport();
+});
+document.getElementById('clearFilterBtn').addEventListener('click', () => {
+  document.getElementById('monthFilter').value = '';
+  document.getElementById('fromFilter').value = '';
+  document.getElementById('toFilter').value = '';
+  renderReport();
+});
 
 loadData(true);
 setInterval(()=>loadData(false), REFRESH_MS);
