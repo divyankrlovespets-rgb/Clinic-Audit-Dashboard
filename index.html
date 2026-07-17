@@ -413,6 +413,21 @@ function buildSection2(unqualRecords){
   });
   rows.sort((a,b)=>b.combinedError-a.combinedError);
 
+  // Overall aggregate (across all filtered records, not average-of-averages)
+  let ovTotal=0, ovDispNo=0, ovUnqualYes=0, ovUnqualWrong=0, ovNotesYes=0, ovNotesTotal=0, ovProbingYes=0, ovProbingTotal=0;
+  unqualRecords.forEach(r=>{
+    ovTotal++;
+    if(isNo(r.disposed)) ovDispNo++;
+    if(isYes(r.unqual)){ ovUnqualYes++; if(isNo(r.disposed)) ovUnqualWrong++; }
+    if(r.notes!=='' && r.notes!=='-'){ ovNotesTotal++; if(isYes(r.notes)) ovNotesYes++; }
+    if(r.probing!==''){ ovProbingTotal++; if(isYes(r.probing)) ovProbingYes++; }
+  });
+  const ovDispErr = ovTotal? ovDispNo/ovTotal*100 : 0;
+  const ovUnqErr = ovUnqualYes? ovUnqualWrong/ovUnqualYes*100 : 0;
+  const ovNotesAcc = ovNotesTotal? ovNotesYes/ovNotesTotal*100 : 0;
+  const ovProbingAcc = ovProbingTotal? ovProbingYes/ovProbingTotal*100 : 0;
+  const ovCombinedError = (ovDispErr+ovUnqErr+(100-ovNotesAcc)+(100-ovProbingAcc))/4;
+
   const tableRows = rows.map(r=>`
     <tr>
       <td class="agent-name">${r.agent}</td><td>${r.tickets}</td>
@@ -465,6 +480,7 @@ function buildSection2(unqualRecords){
             <b>Probing Accuracy</b> = % of tickets with effective/relevant probing done &nbsp;|&nbsp;
             <b>Combined Error</b> = simple average of Disp, Unq, Notes, and Probing error rates. Data covers all rows currently in the sheet (${totalTickets} tickets audited total).
           </p>
+          <p class="note"><b>Overall:</b> Disp Error ${fmt1(ovDispErr)}% &nbsp;|&nbsp; Unq Error ${fmt1(ovUnqErr)}% &nbsp;|&nbsp; Notes Accuracy ${fmt1(ovNotesAcc)}% &nbsp;|&nbsp; Probing Accuracy ${fmt1(ovProbingAcc)}% &nbsp;|&nbsp; Combined Error ${fmt1(ovCombinedError)}%</p>
         </div>
         <div class="card">
           <h3>Risk Segmentation &amp; Integrity Flags</h3>
