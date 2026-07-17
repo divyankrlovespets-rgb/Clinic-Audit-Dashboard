@@ -327,6 +327,8 @@ function buildSection1(auditRecords, paramNames){
   })).filter(r=>r.count>0);
   agentRows.sort((a,b)=>a.avg-b.avg);
   const totalAudits = agentRows.reduce((a,r)=>a+r.count,0);
+  const allScores = auditRecords.map(r=>r.score).filter(s=>s!==null);
+  const overallAvg = allScores.length ? allScores.reduce((a,c)=>a+c,0)/allScores.length : 0;
 
   const rowsHtml = agentRows.map(r=>{
     const rt = ratingPill(r.avg);
@@ -368,7 +370,7 @@ function buildSection1(auditRecords, paramNames){
         <div class="card">
           <h3>Agent-wise Audit Count &amp; Average Score</h3>
           <table><tr><th>Agent</th><th>Audits Done</th><th>Avg Score</th><th>Rating</th></tr>${rowsHtml}</table>
-          <p class="note">Sorted lowest → highest average score. Total agents audited: ${agentRows.length} | Total audits: ${totalAudits}.</p>
+          <p class="note">Sorted lowest → highest average score. Total agents audited: ${agentRows.length} | Total audits: ${totalAudits} | <b>Overall Average Score: ${fmt1(overallAvg)}</b></p>
         </div>
         <div class="card">
           <h3>Top 3 Highest Markdown Parameters (org-wide)</h3>
